@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Card Grading Pro - AI Quality Assessment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        .header {
+            padding: 1.5rem;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #a0aec0;
+        }
+
+        .container {
+            padding: 1.5rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #667eea;
+        }
+
+        .device-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+
+        .device-icon {
+            font-size: 2rem;
+        }
+
+        .device-details h3 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .device-details p {
+            font-size: 0.85rem;
+            color: #a0aec0;
+        }
+
+        .photo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .photo-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .photo-card:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        .photo-card.captured {
+            border: 2px solid #48bb78;
+            background: rgba(72, 187, 120, 0.1);
+        }
+
+        .photo-card.required {
+            border-color: rgba(237, 137, 54, 0.5);
+        }
+
+        .photo-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .photo-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .photo-status {
+            font-size: 0.75rem;
+            color: #a0aec0;
+        }
+
+        .photo-card.captured .photo-status {
+            color: #48bb78;
+        }
+
+        .camera-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000000;
+            z-index: 1000;
+        }
+
+        .camera-modal.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .camera-header {
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .camera-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .close-camera {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+
+        .camera-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #cameraPreview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .camera-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 400px;
+            aspect-ratio: 2.5/3.5;
+            border: 3px solid rgba(102, 126, 234, 0.8);
+            border-radius: 12px;
+            pointer-events: none;
+        }
+
+        .corner-overlay {
+            width: 60%;
+            aspect-ratio: 1;
+            border: 3px solid rgba(237, 137, 54, 0.8);
+        }
+
+        .camera-guidance {
+            position: absolute;
+            bottom: 180px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 1rem;
+            border-radius: 12px;
+            min-width: 280px;
+            max-width: 90%;
+        }
+
+        .guidance-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .guidance-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .guidance-icon {
+            font-size: 1.2rem;
+        }
+
+        .camera-controls {
+            padding: 2rem 1rem;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .capture-button {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 4px solid white;
+            background: #667eea;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .capture-button:active {
+            transform: scale(0.95);
+        }
+
+        .capture-button::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: white;
+        }
+
+        .switch-camera-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .analyze-button {
+            width: 100%;
+            padding: 1.2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .analyze-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .analyze-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .tips-section {
+            background: rgba(237, 137, 54, 0.1);
+            border: 1px solid rgba(237, 137, 54, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .tips-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #ed8936;
+            margin-bottom: 0.5rem;
+        }
+
+        .tip-item {
+            font-size: 0.85rem;
+            color: #cbd5e0;
+            margin-bottom: 0.3rem;
+            padding-left: 1.2rem;
+            position: relative;
+        }
+
+        .tip-item::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: #ed8936;
+        }
+
+        .preview-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Card Grading Pro</h1>
+        <p class="subtitle">AI-Powered PSA-Style Quality Assessment</p>
+    </div>
+
+    <div class="container">
+        <!-- Device Detection Section -->
+        <div class="section">
+            <h2 class="section-title">📱 Device Detected</h2>
+            <div class="device-info" id="deviceInfo">
+                <div class="device-icon" id="deviceIcon">📱</div>
+                <div class="device-details">
+                    <h3 id="deviceName">Detecting...</h3>
+                    <p id="deviceCamera">Analyzing camera capabilities...</p>
+                </div>
+            </div>
+
+            <div class="tips-section" id="deviceTips">
+                <div class="tips-title">📸 Tips for Your Device:</div>
+                <div id="tipsList"></div>
+            </div>
+        </div>
+
+        <!-- Photo Capture Section -->
+        <div class="section">
+            <h2 class="section-title">📸 Capture Photos</h2>
+            <p style="font-size: 0.9rem; color: #a0aec0; margin-bottom: 1rem;">
+                Required photos are marked with orange border. Optional photos improve accuracy.
+            </p>
+
+            <div class="photo-grid">
+                <!-- Required Photos -->
+                <div class="photo-card required" onclick="startCapture('front')" id="photoCard-front">
+                    <div class="photo-icon">🃏</div>
+                    <div class="photo-label">Front</div>
+                    <div class="photo-status">Required</div>
+                </div>
+
+                <div class="photo-card required" onclick="startCapture('back')" id="photoCard-back">
+                    <div class="photo-icon">🎴</div>
+                    <div class="photo-label">Back</div>
+                    <div class="photo-status">Required</div>
+                </div>
+
+                <!-- Corner Photos -->
+                <div class="photo-card" onclick="startCapture('corner-tl')" id="photoCard-corner-tl">
+                    <div class="photo-icon">📐</div>
+                    <div class="photo-label">Top Left</div>
+                    <div class="photo-status">+Accuracy</div>
+                </div>
+
+                <div class="photo-card" onclick="startCapture('corner-tr')" id="photoCard-corner-tr">
+                    <div class="photo-icon">📐</div>
+                    <div class="photo-label">Top Right</div>
+                    <div class="photo-status">+Accuracy</div>
+                </div>
+
+                <div class="photo-card" onclick="startCapture('corner-bl')" id="photoCard-corner-bl">
+                    <div class="photo-icon">📐</div>
+                    <div class="photo-label">Bottom Left</div>
+                    <div class="photo-status">+Accuracy</div>
+                </div>
+
+                <div class="photo-card" onclick="startCapture('corner-br')" id="photoCard-corner-br">
+                    <div class="photo-icon">📐</div>
+                    <div class="photo-label">Bottom Right</div>
+                    <div class="photo-status">+Accuracy</div>
+                </div>
+            </div>
+
+            <button class="analyze-button" id="analyzeButton" onclick="analyzeCard()" disabled>
+                Grade Card (Coming Soon)
+            </button>
+        </div>
+    </div>
+
+    <!-- Camera Modal -->
+    <div class="camera-modal" id="cameraModal">
+        <div class="camera-header">
+            <div class="camera-title" id="cameraTitle">Capture Photo</div>
+            <button class="close-camera" onclick="stopCapture()">×</button>
+        </div>
+
+        <div class="camera-container">
+            <video id="cameraPreview" autoplay playsinline></video>
+            <div class="camera-overlay" id="cameraOverlay"></div>
+            
+            <div class="camera-guidance" id="cameraGuidance">
+                <div class="guidance-item">
+                    <span class="guidance-icon">⏳</span>
+                    <span>Initializing camera...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="camera-controls">
+            <button class="switch-camera-button" id="switchCameraButton" onclick="switchCamera()" style="display: none;">
+                🔄
+            </button>
+            <button class="capture-button" onclick="capturePhoto()"></button>
+        </div>
+    </div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // GLOBAL STATE
+        // ═══════════════════════════════════════════════════════════════
+        
+        let currentCaptureType = null;
+        let cameraStream = null;
+        let availableCameras = [];
+        let currentCameraIndex = 0;
+        let capturedPhotos = {};
+        let deviceInfo = {};
+
+        // ═══════════════════════════════════════════════════════════════
+        // DEVICE DETECTION
+        // ═══════════════════════════════════════════════════════════════
+        
+        async function detectDevice() {
+            const userAgent = navigator.userAgent;
+            const platform = navigator.platform;
+            
+            // Detect device type
+            const isIPhone = /iPhone/.test(userAgent);
+            const isIPad = /iPad/.test(userAgent);
+            const isAndroid = /Android/.test(userAgent);
+            const isSamsung = /Samsung/.test(userAgent);
+            const isPixel = /Pixel/.test(userAgent);
+            
+            // Get camera info
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            availableCameras = devices.filter(d => d.kind === 'videoinput');
+            
+            // Determine device info
+            let deviceName = 'Unknown Device';
+            let deviceIcon = '📱';
+            let cameraInfo = `${availableCameras.length} camera(s) detected`;
+            let tips = [];
+            
+            if (isIPhone) {
+                deviceName = 'iPhone';
+                deviceIcon = '📱';
+                tips = [
+                    'Tap screen to focus on card',
+                    'Hold finger to lock AE/AF',
+                    'Disable Live Photos for best quality',
+                    'Use good lighting - avoid shadows'
+                ];
+                
+                // Check for multiple cameras (Pro models)
+                if (availableCameras.length >= 3) {
+                    deviceName = 'iPhone Pro';
+                    cameraInfo = 'Multi-camera system detected (Wide, Ultra-Wide, Telephoto)';
+                    tips.push('App will auto-switch to telephoto for corners');
+                }
+            } else if (isIPad) {
+                deviceName = 'iPad';
+                deviceIcon = '📱';
+                tips = [
+                    'Use rear camera for best quality',
+                    'Tap to focus',
+                    'Ensure good lighting'
+                ];
+            } else if (isPixel) {
+                deviceName = 'Google Pixel';
+                deviceIcon = '📱';
+                cameraInfo = 'Computational photography detected';
+                tips = [
+                    'HDR+ will enhance photos automatically',
+                    'Tap to focus',
+                    'Night Sight disabled for accuracy',
+                    'Super Res Zoom available for corners'
+                ];
+            } else if (isSamsung) {
+                deviceName = 'Samsung Galaxy';
+                deviceIcon = '📱';
+                tips = [
+                    'Use Pro mode for best control',
+                    '108MP mode recommended (if available)',
+                    'Disable Scene Optimizer',
+                    'Tap to focus on card'
+                ];
+            } else if (isAndroid) {
+                deviceName = 'Android Device';
+                deviceIcon = '📱';
+                tips = [
+                    'Use rear camera',
+                    'Tap to focus',
+                    'Disable HDR/AI enhancement',
+                    'Use good lighting'
+                ];
+            } else {
+                tips = [
+                    'Use rear camera if available',
+                    'Ensure good lighting',
+                    'Hold device steady',
+                    'Tap/click to focus'
+                ];
+            }
+            
+            deviceInfo = {
+                name: deviceName,
+                icon: deviceIcon,
+                camera: cameraInfo,
+                tips: tips,
+                isIPhone,
+                isAndroid,
+                isSamsung,
+                isPixel
+            };
+            
+            return deviceInfo;
+        }
+
+        function displayDeviceInfo(info) {
+            document.getElementById('deviceName').textContent = info.name;
+            document.getElementById('deviceIcon').textContent = info.icon;
+            document.getElementById('deviceCamera').textContent = info.camera;
+            
+            const tipsList = document.getElementById('tipsList');
+            tipsList.innerHTML = info.tips.map(tip => 
+                `<div class="tip-item">${tip}</div>`
+            ).join('');
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CAMERA CAPTURE
+        // ═══════════════════════════════════════════════════════════════
+        
+        async function startCapture(type) {
+            currentCaptureType = type;
+            const modal = document.getElementById('cameraModal');
+            const title = document.getElementById('cameraTitle');
+            const overlay = document.getElementById('cameraOverlay');
+            
+            // Set title
+            const titles = {
+                'front': 'Card Front - Full View',
+                'back': 'Card Back - Full View',
+                'corner-tl': 'Top Left Corner - Close-up',
+                'corner-tr': 'Top Right Corner - Close-up',
+                'corner-bl': 'Bottom Left Corner - Close-up',
+                'corner-br': 'Bottom Right Corner - Close-up'
+            };
+            title.textContent = titles[type];
+            
+            // Adjust overlay
+            if (type.startsWith('corner')) {
+                overlay.classList.add('corner-overlay');
+            } else {
+                overlay.classList.remove('corner-overlay');
+            }
+            
+            // Show modal
+            modal.classList.add('active');
+            
+            // Start camera
+            await initializeCamera(type);
+        }
+
+        async function initializeCamera(type) {
+            try {
+                // Determine which camera to use
+                let cameraIndex = 0;
+                
+                // For corners, try to use telephoto if available (typically camera index 2)
+                if (type.startsWith('corner') && availableCameras.length >= 3) {
+                    cameraIndex = 2; // Telephoto on multi-camera phones
+                }
+                
+                const constraints = {
+                    video: {
+                        deviceId: availableCameras[cameraIndex]?.deviceId,
+                        facingMode: 'environment',
+                        width: { ideal: 4032 },
+                        height: { ideal: 3024 }
+                    }
+                };
+                
+                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                const video = document.getElementById('cameraPreview');
+                video.srcObject = cameraStream;
+                
+                currentCameraIndex = cameraIndex;
+                
+                // Show camera switch button if multiple cameras
+                if (availableCameras.length > 1) {
+                    document.getElementById('switchCameraButton').style.display = 'flex';
+                }
+                
+                // Start quality monitoring
+                setTimeout(() => monitorQuality(), 500);
+                
+            } catch (error) {
+                console.error('Camera error:', error);
+                updateGuidance([
+                    { icon: '❌', text: 'Camera access denied', type: 'error' },
+                    { icon: 'ℹ️', text: 'Please allow camera permission', type: 'warning' }
+                ]);
+            }
+        }
+
+        async function switchCamera() {
+            if (availableCameras.length <= 1) return;
+            
+            // Stop current stream
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Switch to next camera
+            currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+            
+            const constraints = {
+                video: {
+                    deviceId: availableCameras[currentCameraIndex].deviceId,
+                    facingMode: 'environment',
+                    width: { ideal: 4032 },
+                    height: { ideal: 3024 }
+                }
+            };
+            
+            cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const video = document.getElementById('cameraPreview');
+            video.srcObject = cameraStream;
+        }
+
+        function monitorQuality() {
+            const video = document.getElementById('cameraPreview');
+            
+            if (!video.videoWidth) {
+                setTimeout(() => monitorQuality(), 100);
+                return;
+            }
+            
+            // Create canvas for analysis
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            
+            const checkQuality = () => {
+                if (!cameraStream) return;
+                
+                ctx.drawImage(video, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // Simple quality checks
+                const guidance = [];
+                
+                // Check brightness
+                const brightness = calculateBrightness(imageData);
+                if (brightness < 50) {
+                    guidance.push({ icon: '💡', text: 'Too dark - add more light', type: 'warning' });
+                } else if (brightness > 220) {
+                    guidance.push({ icon: '☀️', text: 'Too bright - reduce glare', type: 'warning' });
+                } else {
+                    guidance.push({ icon: '✓', text: 'Lighting good', type: 'success' });
+                }
+                
+                // Device-specific tips
+                if (deviceInfo.isIPhone) {
+                    guidance.push({ icon: '👆', text: 'Tap screen to focus', type: 'info' });
+                }
+                
+                // Corner-specific guidance
+                if (currentCaptureType.startsWith('corner')) {
+                    guidance.push({ icon: '🔍', text: 'Fill frame with corner', type: 'info' });
+                    guidance.push({ icon: '📏', text: 'Get closer for detail', type: 'info' });
+                } else {
+                    guidance.push({ icon: '📐', text: 'Show all 4 corners', type: 'info' });
+                    guidance.push({ icon: '⚖️', text: 'Keep card centered', type: 'info' });
+                }
+                
+                updateGuidance(guidance);
+                
+                setTimeout(checkQuality, 500);
+            };
+            
+            checkQuality();
+        }
+
+        function calculateBrightness(imageData) {
+            const data = imageData.data;
+            let total = 0;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                total += (r + g + b) / 3;
+            }
+            
+            return total / (data.length / 4);
+        }
+
+        function updateGuidance(items) {
+            const guidance = document.getElementById('cameraGuidance');
+            guidance.innerHTML = items.map(item => {
+                let color = '#cbd5e0';
+                if (item.type === 'success') color = '#48bb78';
+                if (item.type === 'warning') color = '#ed8936';
+                if (item.type === 'error') color = '#f56565';
+                
+                return `
+                    <div class="guidance-item" style="color: ${color}">
+                        <span class="guidance-icon">${item.icon}</span>
+                        <span>${item.text}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('cameraPreview');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            // Convert to data URL
+            const photoData = canvas.toDataURL('image/jpeg', 0.95);
+            
+            // Store photo
+            capturedPhotos[currentCaptureType] = photoData;
+            
+            // Update UI
+            const card = document.getElementById(`photoCard-${currentCaptureType}`);
+            card.classList.add('captured');
+            card.innerHTML = `
+                <img src="${photoData}" class="preview-image">
+                <div class="photo-status" style="position: absolute; bottom: 0.5rem; right: 0.5rem; background: rgba(72, 187, 120, 0.9); padding: 0.3rem 0.6rem; border-radius: 6px;">✓ Captured</div>
+            `;
+            
+            // Check if required photos are done
+            checkRequiredPhotos();
+            
+            // Close camera
+            stopCapture();
+        }
+
+        function stopCapture() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            document.getElementById('cameraModal').classList.remove('active');
+        }
+
+        function checkRequiredPhotos() {
+            const hasRequired = capturedPhotos['front'] && capturedPhotos['back'];
+            const button = document.getElementById('analyzeButton');
+            
+            if (hasRequired) {
+                const cornerCount = Object.keys(capturedPhotos).filter(k => k.startsWith('corner')).length;
+                button.disabled = false;
+                button.textContent = `Grade Card (${Object.keys(capturedPhotos).length} photos)`;
+            }
+        }
+
+        function analyzeCard() {
+            alert('Card grading analysis coming soon! This will send your photos to Claude AI for PSA-style quality assessment.');
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // INITIALIZATION
+        // ═══════════════════════════════════════════════════════════════
+        
+        window.addEventListener('DOMContentLoaded', async () => {
+            const info = await detectDevice();
+            displayDeviceInfo(info);
+        });
+    </script>
+</body>
+</html>
