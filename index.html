@@ -849,19 +849,35 @@
             resultsContent.innerHTML = `
                 <div class="loading">
                     <div class="spinner"></div>
-                    <p>Measuring card centering...</p>
-                    <p style="font-size: 0.85rem; color: #a0aec0; margin-top: 0.5rem;">Using computer vision edge detection</p>
+                    <p>Detecting structural damage...</p>
+                    <p style="font-size: 0.85rem; color: #a0aec0; margin-top: 0.5rem;">Checking for creases and bends</p>
                 </div>
             `;
             
             try {
-                // First, measure centering programmatically
+                // Step 1: Detect creases
+                let creaseData = null;
+                if (capturedPhotos['front']) {
+                    creaseData = await detectCreases(capturedPhotos['front']);
+                    console.log('Crease detection:', creaseData);
+                }
+                
+                // Step 2: Measure centering
+                resultsContent.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Measuring card centering...</p>
+                        <p style="font-size: 0.85rem; color: #a0aec0; margin-top: 0.5rem;">Using computer vision edge detection</p>
+                    </div>
+                `;
+                
                 let centeringData = null;
                 if (capturedPhotos['front']) {
                     centeringData = await measureCentering(capturedPhotos['front']);
                     console.log('Centering measured programmatically:', centeringData);
                 }
                 
+                // Step 3: AI analysis
                 resultsContent.innerHTML = `
                     <div class="loading">
                         <div class="spinner"></div>
@@ -881,7 +897,8 @@
                     body: JSON.stringify({
                         photos: capturedPhotos,
                         photoTypes: Object.keys(capturedPhotos),
-                        centeringData: centeringData // Include programmatic measurements
+                        centeringData: centeringData,
+                        creaseData: creaseData
                     })
                 });
                 
@@ -892,9 +909,21 @@
                 const result = await response.json();
                 console.log('Grading result:', result);
                 
-                // Override centering with programmatic data
+                // Override with programmatic data
                 if (centeringData && result.breakdown) {
                     result.breakdown.centering = centeringData;
+                }
+                
+                // Add crease data if detected
+                if (creaseData && creaseData.hasCreases) {
+                    result.breakdown.creases = creaseData;
+                    
+                    // Creases override the final grade
+                    if (creaseData.maxGrade < parseInt(result.estimatedGrade)) {
+                        result.estimatedGrade = creaseData.maxGrade.toString();
+                        result.gradeRange = `${creaseData.maxGrade}`;
+                        result.keyIssues = [creaseData.gradeImpact, ...(result.keyIssues || [])];
+                    }
                 }
                 
                 displayResults(result);
@@ -1122,6 +1151,275 @@
             return `Heavily off-center at ${ratio} - below PSA 6 standards`;
         }
 
+        // Crease Detection using Computer Vision
+        async function detectCreases(imageDataURL) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    
+                    try {
+                        // Convert to grayscale
+                        const grayscale = toGrayscale(imageData);
+                        
+                        // Detect edges using Sobel
+                        const edges = sobelEdgeDetection(grayscale, img.width, img.height);
+                        
+                        // Detect shadows
+                        const shadows = detectShadowLines(grayscale, img.width, img.height);
+                        
+                        // Find linear patterns (creases)
+                        const lines = detectLinearPatterns(edges, shadows, img.width, img.height);
+                        
+                        // Analyze for creases
+                        const result = analyzeCreaseLines(lines, img.width, img.height);
+                        
+                        resolve(result);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                
+                img.onerror = () => reject(new Error('Failed to load image for crease detection'));
+                img.src = imageDataURL;
+            });
+        }
+
+        function toGrayscale(imageData) {
+            const data = imageData.data;
+            const grayscale = new Uint8ClampedArray(imageData.width * imageData.height);
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                grayscale[i / 4] = 0.299 * r + 0.587 * g + 0.114 * b;
+            }
+            
+            return grayscale;
+        }
+
+        function sobelEdgeDetection(grayscale, width, height) {
+            const edges = new Float32Array(width * height);
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let gx = 0, gy = 0;
+                    
+                    // 3x3 Sobel kernels
+                    const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+                    const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+                    
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const idx = (y + ky) * width + (x + kx);
+                            const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                            gx += grayscale[idx] * sobelX[kernelIdx];
+                            gy += grayscale[idx] * sobelY[kernelIdx];
+                        }
+                    }
+                    
+                    edges[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+                }
+            }
+            
+            return edges;
+        }
+
+        function detectShadowLines(grayscale, width, height) {
+            const shadows = new Float32Array(width * height);
+            const windowSize = 5;
+            
+            for (let y = windowSize; y < height - windowSize; y++) {
+                for (let x = windowSize; x < width - windowSize; x++) {
+                    const center = grayscale[y * width + x];
+                    
+                    let sum = 0, count = 0;
+                    for (let dy = -windowSize; dy <= windowSize; dy++) {
+                        for (let dx = -windowSize; dx <= windowSize; dx++) {
+                            sum += grayscale[(y + dy) * width + (x + dx)];
+                            count++;
+                        }
+                    }
+                    const avg = sum / count;
+                    
+                    shadows[y * width + x] = Math.max(0, avg - center);
+                }
+            }
+            
+            return shadows;
+        }
+
+        function detectLinearPatterns(edges, shadows, width, height) {
+            const lines = [];
+            const edgeThreshold = 50;
+            const shadowThreshold = 20;
+            
+            // Scan for horizontal lines
+            for (let y = 0; y < height; y++) {
+                let strength = 0, length = 0, startX = 0;
+                
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
+                    if (edges[idx] > edgeThreshold && shadows[idx] > shadowThreshold) {
+                        if (length === 0) startX = x;
+                        strength += edges[idx] + shadows[idx];
+                        length++;
+                    } else if (length > width * 0.3) {
+                        lines.push({
+                            type: 'horizontal',
+                            y: y,
+                            startX: startX,
+                            endX: x - 1,
+                            length: length,
+                            strength: strength / length
+                        });
+                        length = 0;
+                        strength = 0;
+                    } else {
+                        length = 0;
+                        strength = 0;
+                    }
+                }
+            }
+            
+            // Scan for vertical lines
+            for (let x = 0; x < width; x++) {
+                let strength = 0, length = 0, startY = 0;
+                
+                for (let y = 0; y < height; y++) {
+                    const idx = y * width + x;
+                    if (edges[idx] > edgeThreshold && shadows[idx] > shadowThreshold) {
+                        if (length === 0) startY = y;
+                        strength += edges[idx] + shadows[idx];
+                        length++;
+                    } else if (length > height * 0.3) {
+                        lines.push({
+                            type: 'vertical',
+                            x: x,
+                            startY: startY,
+                            endY: y - 1,
+                            length: length,
+                            strength: strength / length
+                        });
+                        length = 0;
+                        strength = 0;
+                    } else {
+                        length = 0;
+                        strength = 0;
+                    }
+                }
+            }
+            
+            return lines;
+        }
+
+        function analyzeCreaseLines(lines, width, height) {
+            if (lines.length === 0) {
+                return {
+                    hasCreases: false,
+                    creaseCount: 0,
+                    worstSeverity: 'none',
+                    creases: [],
+                    gradeImpact: 'No creases detected',
+                    maxGrade: 10,
+                    issue: 'No structural damage detected'
+                };
+            }
+            
+            const creases = [];
+            
+            for (const line of lines) {
+                let severity = 'none';
+                if (line.strength > 150) severity = 'major';
+                else if (line.strength > 100) severity = 'moderate';
+                else if (line.strength > 70) severity = 'light';
+                else if (line.strength > 50) severity = 'micro';
+                
+                if (severity !== 'none') {
+                    creases.push({
+                        type: line.type,
+                        position: line.type === 'horizontal' 
+                            ? `${Math.round((line.y / height) * 100)}% from top`
+                            : `${Math.round((line.x / width) * 100)}% from left`,
+                        severity: severity,
+                        strength: Math.round(line.strength),
+                        coordinates: line
+                    });
+                }
+            }
+            
+            if (creases.length === 0) {
+                return {
+                    hasCreases: false,
+                    creaseCount: 0,
+                    worstSeverity: 'none',
+                    creases: [],
+                    gradeImpact: 'No creases detected',
+                    maxGrade: 10,
+                    issue: 'No structural damage detected'
+                };
+            }
+            
+            // Find worst severity
+            const severityOrder = { 'major': 4, 'moderate': 3, 'light': 2, 'micro': 1 };
+            let worstSeverity = 'micro';
+            let maxScore = 0;
+            
+            for (const crease of creases) {
+                const score = severityOrder[crease.severity] || 0;
+                if (score > maxScore) {
+                    maxScore = score;
+                    worstSeverity = crease.severity;
+                }
+            }
+            
+            // Determine impact
+            let maxGrade = 10, gradeImpact = '', issue = '';
+            
+            switch (worstSeverity) {
+                case 'major':
+                    maxGrade = 3;
+                    gradeImpact = '🚨 MAJOR CREASE - Card bent in half - Grade capped at PSA 1-3';
+                    issue = 'Severe crease detected from card being bent. This is a grade-killing flaw.';
+                    break;
+                case 'moderate':
+                    maxGrade = 4;
+                    gradeImpact = '⚠️ VISIBLE CREASE - Grade capped at PSA 3-4';
+                    issue = 'Clear crease visible on card surface. Grade capped at PSA 4.';
+                    break;
+                case 'light':
+                    maxGrade = 5;
+                    gradeImpact = 'Light crease detected - Grade capped at PSA 4-5';
+                    issue = 'Light crease present. Grade capped at PSA 5.';
+                    break;
+                case 'micro':
+                    maxGrade = 7;
+                    gradeImpact = 'Slight bend detected - May impact grade';
+                    issue = 'Minor surface bend detected. May affect final grade.';
+                    break;
+            }
+            
+            return {
+                hasCreases: true,
+                creaseCount: creases.length,
+                worstSeverity: worstSeverity,
+                creases: creases,
+                gradeImpact: gradeImpact,
+                maxGrade: maxGrade,
+                issue: issue,
+                method: 'Computer Vision (Edge + Shadow Detection)'
+            };
+        }
+
         function displayResults(result) {
             const resultsContent = document.getElementById('resultsContent');
             
@@ -1273,6 +1571,42 @@
                     </div>
                     
                     <div class="grade-details">
+                        ${breakdown.creases && breakdown.creases.hasCreases ? `
+                            <div class="detail-item" style="border: 3px solid #f56565; background: rgba(245, 101, 101, 0.1);">
+                                <div class="detail-title">🚨 Structural Damage ${breakdown.creases.method ? `<span style="font-size: 0.7rem; background: rgba(245, 101, 101, 0.3); padding: 0.25rem 0.5rem; border-radius: 4px; margin-left: 0.5rem;">${breakdown.creases.method}</span>` : ''}</div>
+                                <div class="detail-value" style="color: #f56565;">${breakdown.creases.maxGrade}/10 MAX</div>
+                                
+                                <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px; border-left: 4px solid #f56565;">
+                                    <div style="font-weight: 700; color: #f56565; margin-bottom: 0.5rem;">${breakdown.creases.gradeImpact}</div>
+                                    <div style="font-size: 0.9rem; margin-top: 0.5rem;">${breakdown.creases.issue}</div>
+                                </div>
+                                
+                                ${breakdown.creases.creases && breakdown.creases.creases.length > 0 ? `
+                                    <div style="margin-top: 1rem;">
+                                        <div style="font-size: 0.85rem; color: #a0aec0; margin-bottom: 0.5rem;">Detected Creases:</div>
+                                        ${breakdown.creases.creases.map(crease => `
+                                            <div style="padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 0.5rem;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                    <div>
+                                                        <div style="font-weight: 600; text-transform: uppercase; color: ${
+                                                            crease.severity === 'major' ? '#f56565' :
+                                                            crease.severity === 'moderate' ? '#ed8936' :
+                                                            crease.severity === 'light' ? '#f6e05e' : '#a0aec0'
+                                                        }">${crease.severity} ${crease.type} crease</div>
+                                                        <div style="font-size: 0.8rem; color: #a0aec0;">Position: ${crease.position}</div>
+                                                    </div>
+                                                    <div style="text-align: right;">
+                                                        <div style="font-size: 0.75rem; color: #a0aec0;">Strength</div>
+                                                        <div style="font-size: 1.1rem; font-weight: 600;">${crease.strength}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        ` : ''}
+                        
                         ${centeringHTML}
                         ${cornersHTML}
                         
