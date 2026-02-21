@@ -849,12 +849,27 @@
             resultsContent.innerHTML = `
                 <div class="loading">
                     <div class="spinner"></div>
-                    <p>AI is analyzing your card...</p>
-                    <p style="font-size: 0.85rem; color: #a0aec0; margin-top: 0.5rem;">This may take 10-30 seconds</p>
+                    <p>Measuring card centering...</p>
+                    <p style="font-size: 0.85rem; color: #a0aec0; margin-top: 0.5rem;">Using computer vision edge detection</p>
                 </div>
             `;
             
             try {
+                // First, measure centering programmatically
+                let centeringData = null;
+                if (capturedPhotos['front']) {
+                    centeringData = await measureCentering(capturedPhotos['front']);
+                    console.log('Centering measured programmatically:', centeringData);
+                }
+                
+                resultsContent.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>AI is analyzing corners, edges, and surface...</p>
+                        <p style="font-size: 0.85rem; color: #a0aec0; margin-top: 0.5rem;">This may take 10-30 seconds</p>
+                    </div>
+                `;
+                
                 console.log('Sending to worker:', WORKER_URL);
                 console.log('Photo count:', Object.keys(capturedPhotos).length);
                 
@@ -865,7 +880,8 @@
                     },
                     body: JSON.stringify({
                         photos: capturedPhotos,
-                        photoTypes: Object.keys(capturedPhotos)
+                        photoTypes: Object.keys(capturedPhotos),
+                        centeringData: centeringData // Include programmatic measurements
                     })
                 });
                 
@@ -875,6 +891,11 @@
                 
                 const result = await response.json();
                 console.log('Grading result:', result);
+                
+                // Override centering with programmatic data
+                if (centeringData && result.breakdown) {
+                    result.breakdown.centering = centeringData;
+                }
                 
                 displayResults(result);
                 
@@ -896,6 +917,184 @@
             }
         }
 
+        // Computer Vision - Programmatic Centering Measurement
+        async function measureCentering(imageDataURL) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    
+                    try {
+                        // Detect card edges
+                        const edges = detectCardEdges(imageData);
+                        
+                        // Calculate border widths
+                        const leftBorder = edges.left;
+                        const rightBorder = img.width - edges.right;
+                        const topBorder = edges.top;
+                        const bottomBorder = img.height - edges.bottom;
+                        
+                        // Calculate ratios
+                        const lrTotal = leftBorder + rightBorder;
+                        const tbTotal = topBorder + bottomBorder;
+                        
+                        const lrRatio = formatCenteringRatio(leftBorder, rightBorder);
+                        const tbRatio = formatCenteringRatio(topBorder, bottomBorder);
+                        
+                        // Find worst ratio
+                        const lrPercent = Math.max(leftBorder / lrTotal, rightBorder / lrTotal) * 100;
+                        const tbPercent = Math.max(topBorder / tbTotal, bottomBorder / tbTotal) * 100;
+                        const worstPercent = Math.max(lrPercent, tbPercent);
+                        const worstRatio = worstPercent === lrPercent ? lrRatio : tbRatio;
+                        
+                        // Calculate PSA score
+                        let score = 10;
+                        if (worstPercent > 55) score = 9;
+                        if (worstPercent > 60) score = 8;
+                        if (worstPercent > 65) score = 7;
+                        if (worstPercent > 70) score = 6;
+                        if (worstPercent > 75) score = 5;
+                        
+                        resolve({
+                            score: score,
+                            frontLR: lrRatio,
+                            frontTB: tbRatio,
+                            worstRatio: worstRatio,
+                            limitingFactor: worstPercent === lrPercent ? 'left-right' : 'top-bottom',
+                            measurements: {
+                                leftBorder: `${leftBorder}px`,
+                                rightBorder: `${rightBorder}px`,
+                                topBorder: `${topBorder}px`,
+                                bottomBorder: `${bottomBorder}px`
+                            },
+                            edges: edges,
+                            issue: getCenteringIssue(worstPercent, worstRatio),
+                            method: 'Computer Vision (Programmatic)'
+                        });
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = imageDataURL;
+            });
+        }
+
+        function detectCardEdges(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            
+            // Scan from edges inward to find where border ends and card begins
+            const sampleRate = 5;
+            
+            // Detect left edge
+            let left = 0;
+            for (let x = 0; x < width / 2; x += sampleRate) {
+                if (isEdgeTransition(data, width, height, x, height / 2, 'right')) {
+                    left = x;
+                    break;
+                }
+            }
+            
+            // Detect right edge
+            let right = width;
+            for (let x = width - 1; x > width / 2; x -= sampleRate) {
+                if (isEdgeTransition(data, width, height, x, height / 2, 'left')) {
+                    right = x;
+                    break;
+                }
+            }
+            
+            // Detect top edge
+            let top = 0;
+            for (let y = 0; y < height / 2; y += sampleRate) {
+                if (isEdgeTransition(data, width, height, width / 2, y, 'down')) {
+                    top = y;
+                    break;
+                }
+            }
+            
+            // Detect bottom edge
+            let bottom = height;
+            for (let y = height - 1; y > height / 2; y -= sampleRate) {
+                if (isEdgeTransition(data, width, height, width / 2, y, 'up')) {
+                    bottom = y;
+                    break;
+                }
+            }
+            
+            return { left, right, top, bottom };
+        }
+
+        function isEdgeTransition(data, width, height, x, y, direction) {
+            const getPixel = (px, py) => {
+                if (px < 0 || px >= width || py < 0 || py >= height) return null;
+                const idx = (py * width + px) * 4;
+                return {
+                    r: data[idx],
+                    g: data[idx + 1],
+                    b: data[idx + 2]
+                };
+            };
+            
+            const current = getPixel(x, y);
+            if (!current) return false;
+            
+            // Get next pixel in scan direction
+            let nextX = x, nextY = y;
+            const step = 10;
+            
+            if (direction === 'right') nextX += step;
+            else if (direction === 'left') nextX -= step;
+            else if (direction === 'down') nextY += step;
+            else if (direction === 'up') nextY -= step;
+            
+            const next = getPixel(nextX, nextY);
+            if (!next) return false;
+            
+            // Calculate color difference
+            const diff = Math.abs(current.r - next.r) +
+                        Math.abs(current.g - next.g) +
+                        Math.abs(current.b - next.b);
+            
+            // Edge detected if significant color change
+            return diff > 80;
+        }
+
+        function formatCenteringRatio(a, b) {
+            const total = a + b;
+            if (total === 0) return '50/50';
+            
+            const percentA = Math.round((a / total) * 100);
+            const percentB = 100 - percentA;
+            
+            // Always show larger number first
+            if (percentA >= percentB) {
+                return `${percentA}/${percentB}`;
+            } else {
+                return `${percentB}/${percentA}`;
+            }
+        }
+
+        function getCenteringIssue(worstPercent, ratio) {
+            if (worstPercent <= 55) return `Perfect centering at ${ratio} - PSA 10 standards`;
+            if (worstPercent <= 60) return `Slightly off-center at ${ratio} - PSA 9 standards`;
+            if (worstPercent <= 65) return `Noticeably off-center at ${ratio} - PSA 8 standards`;
+            if (worstPercent <= 70) return `Off-center at ${ratio} - PSA 7 standards`;
+            if (worstPercent <= 75) return `Significantly off-center at ${ratio} - PSA 6 standards`;
+            return `Heavily off-center at ${ratio} - below PSA 6 standards`;
+        }
+
         function displayResults(result) {
             const resultsContent = document.getElementById('resultsContent');
             
@@ -912,7 +1111,7 @@
                 
                 centeringHTML = `
                     <div class="detail-item">
-                        <div class="detail-title">Centering Analysis</div>
+                        <div class="detail-title">Centering Analysis ${c.method ? `<span style="font-size: 0.7rem; background: rgba(102, 126, 234, 0.3); padding: 0.25rem 0.5rem; border-radius: 4px; margin-left: 0.5rem;">📐 ${c.method}</span>` : ''}</div>
                         <div class="detail-value">${c.score}/10</div>
                         
                         ${frontImage ? `
@@ -922,15 +1121,17 @@
                         ` : ''}
                         
                         <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                            <div style="font-size: 0.85rem; margin-bottom: 0.5rem; color: #a0aec0;">Front:</div>
+                            <div style="font-size: 0.85rem; margin-bottom: 0.5rem; color: #a0aec0;">Measurements:</div>
                             <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem;">
                                 <div style="flex: 1;">
                                     <div style="font-size: 0.75rem; color: #a0aec0;">Left/Right</div>
                                     <div style="font-size: 1.1rem; font-weight: 600; color: ${getRatioColor(c.frontLR || c.measurement)}">${c.frontLR || c.measurement || 'N/A'}</div>
+                                    ${c.measurements ? `<div style="font-size: 0.7rem; color: #a0aec0;">L: ${c.measurements.leftBorder} | R: ${c.measurements.rightBorder}</div>` : ''}
                                 </div>
                                 <div style="flex: 1;">
                                     <div style="font-size: 0.75rem; color: #a0aec0;">Top/Bottom</div>
                                     <div style="font-size: 1.1rem; font-weight: 600; color: ${getRatioColor(c.frontTB)}">${c.frontTB || 'N/A'}</div>
+                                    ${c.measurements ? `<div style="font-size: 0.7rem; color: #a0aec0;">T: ${c.measurements.topBorder} | B: ${c.measurements.bottomBorder}</div>` : ''}
                                 </div>
                             </div>
                             
