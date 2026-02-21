@@ -902,14 +902,24 @@
             const breakdown = result.breakdown || {};
             const keyIssues = result.keyIssues || [];
             
-            // Build centering visualization
+            // Build centering visualization with card overlay
             let centeringHTML = '';
             if (breakdown.centering) {
                 const c = breakdown.centering;
+                
+                // Get front card image if available
+                const frontImage = capturedPhotos['front'];
+                
                 centeringHTML = `
                     <div class="detail-item">
-                        <div class="detail-title">Centering</div>
+                        <div class="detail-title">Centering Analysis</div>
                         <div class="detail-value">${c.score}/10</div>
+                        
+                        ${frontImage ? `
+                            <div style="margin-top: 1rem; position: relative; background: #000; border-radius: 8px; overflow: hidden;">
+                                <canvas id="centeringCanvas" style="width: 100%; height: auto; display: block;"></canvas>
+                            </div>
+                        ` : ''}
                         
                         <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
                             <div style="font-size: 0.85rem; margin-bottom: 0.5rem; color: #a0aec0;">Front:</div>
@@ -952,14 +962,51 @@
                 `;
             }
             
-            // Build corners detail with individual corner breakdown
+            // Build corners detail with zoomed images
             let cornersHTML = '';
             if (breakdown.corners) {
                 const cor = breakdown.corners;
+                
                 cornersHTML = `
                     <div class="detail-item">
-                        <div class="detail-title">Corners</div>
+                        <div class="detail-title">Corners Analysis</div>
                         <div class="detail-value">${cor.score}/10</div>
+                        
+                        ${capturedPhotos['front'] ? `
+                            <div style="margin-top: 1rem;">
+                                <div style="font-size: 0.85rem; color: #a0aec0; margin-bottom: 0.5rem;">Corner Zoom Views:</div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; overflow: hidden;">
+                                        <canvas id="cornerTL" style="width: 100%; height: auto;"></canvas>
+                                        <div style="padding: 0.5rem; font-size: 0.75rem;">
+                                            <div style="color: #a0aec0;">Top Left</div>
+                                            <div style="color: ${cor.topLeft && cor.topLeft.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.topLeft || 'N/A'}</div>
+                                        </div>
+                                    </div>
+                                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; overflow: hidden;">
+                                        <canvas id="cornerTR" style="width: 100%; height: auto;"></canvas>
+                                        <div style="padding: 0.5rem; font-size: 0.75rem;">
+                                            <div style="color: #a0aec0;">Top Right</div>
+                                            <div style="color: ${cor.topRight && cor.topRight.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.topRight || 'N/A'}</div>
+                                        </div>
+                                    </div>
+                                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; overflow: hidden;">
+                                        <canvas id="cornerBL" style="width: 100%; height: auto;"></canvas>
+                                        <div style="padding: 0.5rem; font-size: 0.75rem;">
+                                            <div style="color: #a0aec0;">Bottom Left</div>
+                                            <div style="color: ${cor.bottomLeft && cor.bottomLeft.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.bottomLeft || 'N/A'}</div>
+                                        </div>
+                                    </div>
+                                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; overflow: hidden;">
+                                        <canvas id="cornerBR" style="width: 100%; height: auto;"></canvas>
+                                        <div style="padding: 0.5rem; font-size: 0.75rem;">
+                                            <div style="color: #a0aec0;">Bottom Right</div>
+                                            <div style="color: ${cor.bottomRight && cor.bottomRight.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.bottomRight || 'N/A'}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
                         
                         ${cor.topLeft ? `
                             <div style="margin-top: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem;">
@@ -1036,6 +1083,164 @@
                     </button>
                 </div>
             `;
+            
+            // Draw centering overlay after DOM is updated
+            setTimeout(() => {
+                if (breakdown.centering && capturedPhotos['front']) {
+                    drawCenteringOverlay(breakdown.centering);
+                }
+                if (breakdown.corners && capturedPhotos['front']) {
+                    drawCornerZooms(breakdown.corners);
+                }
+            }, 100);
+        }
+        
+        function drawCenteringOverlay(centeringData) {
+            const canvas = document.getElementById('centeringCanvas');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = function() {
+                // Set canvas size to match image
+                canvas.width = img.width;
+                canvas.height = img.height;
+                
+                // Draw the card image
+                ctx.drawImage(img, 0, 0);
+                
+                // Parse centering ratios
+                const lrMatch = (centeringData.frontLR || centeringData.measurement || '50/50').match(/(\d+)\/(\d+)/);
+                const tbMatch = (centeringData.frontTB || '50/50').match(/(\d+)\/(\d+)/);
+                
+                if (lrMatch && tbMatch) {
+                    const lrRatio = parseInt(lrMatch[1]) / (parseInt(lrMatch[1]) + parseInt(lrMatch[2]));
+                    const tbRatio = parseInt(tbMatch[1]) / (parseInt(tbMatch[1]) + parseInt(tbMatch[2]));
+                    
+                    // Draw semi-transparent overlay
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Draw center lines
+                    ctx.strokeStyle = '#667eea';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([10, 5]);
+                    
+                    // Vertical center line (L/R centering)
+                    const centerX = canvas.width * lrRatio;
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, 0);
+                    ctx.lineTo(centerX, canvas.height);
+                    ctx.stroke();
+                    
+                    // Horizontal center line (T/B centering)
+                    const centerY = canvas.height * tbRatio;
+                    ctx.beginPath();
+                    ctx.moveTo(0, centerY);
+                    ctx.lineTo(canvas.width, centerY);
+                    ctx.stroke();
+                    
+                    ctx.setLineDash([]);
+                    
+                    // Draw measurement arrows and labels
+                    ctx.fillStyle = '#ffffff';
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                    ctx.shadowBlur = 4;
+                    
+                    // Left/Right measurements
+                    const lrText = centeringData.frontLR || centeringData.measurement || '50/50';
+                    ctx.fillText(lrText, canvas.width / 2, 30);
+                    
+                    // Top/Bottom measurements  
+                    const tbText = centeringData.frontTB || '50/50';
+                    ctx.save();
+                    ctx.translate(30, canvas.height / 2);
+                    ctx.rotate(-Math.PI / 2);
+                    ctx.fillText(tbText, 0, 0);
+                    ctx.restore();
+                    
+                    // Draw border rectangle
+                    ctx.strokeStyle = getRatioColor(centeringData.worstRatio || lrText);
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+                }
+            };
+            
+            img.src = capturedPhotos['front'];
+        }
+        
+        function drawCornerZooms(cornerData) {
+            const frontImage = capturedPhotos['front'];
+            if (!frontImage) return;
+            
+            const img = new Image();
+            img.onload = function() {
+                const corners = [
+                    { id: 'cornerTL', x: 0, y: 0, label: 'topLeft' },
+                    { id: 'cornerTR', x: img.width - 150, y: 0, label: 'topRight' },
+                    { id: 'cornerBL', x: 0, y: img.height - 150, label: 'bottomLeft' },
+                    { id: 'cornerBR', x: img.width - 150, y: img.height - 150, label: 'bottomRight' }
+                ];
+                
+                corners.forEach(corner => {
+                    const canvas = document.getElementById(corner.id);
+                    if (!canvas) return;
+                    
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 150;
+                    canvas.height = 150;
+                    
+                    // Draw zoomed corner
+                    ctx.drawImage(img, corner.x, corner.y, 150, 150, 0, 0, 150, 150);
+                    
+                    // Draw corner indicator
+                    const status = cornerData[corner.label] || 'unknown';
+                    const hasIssue = !status.includes('sharp');
+                    
+                    if (hasIssue) {
+                        // Highlight the corner area if there's an issue
+                        ctx.strokeStyle = '#ed8936';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        
+                        // Draw circle in the actual corner
+                        if (corner.id === 'cornerTL') {
+                            ctx.arc(15, 15, 20, 0, Math.PI * 2);
+                        } else if (corner.id === 'cornerTR') {
+                            ctx.arc(135, 15, 20, 0, Math.PI * 2);
+                        } else if (corner.id === 'cornerBL') {
+                            ctx.arc(15, 135, 20, 0, Math.PI * 2);
+                        } else if (corner.id === 'cornerBR') {
+                            ctx.arc(135, 135, 20, 0, Math.PI * 2);
+                        }
+                        
+                        ctx.stroke();
+                    }
+                    
+                    // Draw crosshair at corner point
+                    ctx.strokeStyle = hasIssue ? '#ed8936' : '#48bb78';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 3]);
+                    
+                    const crosshairX = corner.id.includes('TR') || corner.id.includes('BR') ? 135 : 15;
+                    const crosshairY = corner.id.includes('BL') || corner.id.includes('BR') ? 135 : 15;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(crosshairX - 10, crosshairY);
+                    ctx.lineTo(crosshairX + 10, crosshairY);
+                    ctx.moveTo(crosshairX, crosshairY - 10);
+                    ctx.lineTo(crosshairX, crosshairY + 10);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                });
+            };
+            
+            img.src = frontImage;
         }
         
         function getRatioColor(ratio) {
