@@ -994,46 +994,73 @@
             const height = imageData.height;
             const data = imageData.data;
             
-            // Scan from edges inward to find where border ends and card begins
-            const sampleRate = 5;
+            // Use multiple sample lines for more accurate detection
+            const numSamples = 5;
+            const sampleRate = 3;
             
-            // Detect left edge
-            let left = 0;
-            for (let x = 0; x < width / 2; x += sampleRate) {
-                if (isEdgeTransition(data, width, height, x, height / 2, 'right')) {
-                    left = x;
-                    break;
+            let leftEdges = [];
+            let rightEdges = [];
+            let topEdges = [];
+            let bottomEdges = [];
+            
+            // Sample at multiple Y positions for left/right edges
+            for (let i = 0; i < numSamples; i++) {
+                const y = Math.floor(height * (i + 1) / (numSamples + 1));
+                
+                // Detect left edge at this Y
+                for (let x = 0; x < width / 2; x += sampleRate) {
+                    if (isEdgeTransition(data, width, height, x, y, 'right')) {
+                        leftEdges.push(x);
+                        break;
+                    }
+                }
+                
+                // Detect right edge at this Y
+                for (let x = width - 1; x > width / 2; x -= sampleRate) {
+                    if (isEdgeTransition(data, width, height, x, y, 'left')) {
+                        rightEdges.push(x);
+                        break;
+                    }
                 }
             }
             
-            // Detect right edge
-            let right = width;
-            for (let x = width - 1; x > width / 2; x -= sampleRate) {
-                if (isEdgeTransition(data, width, height, x, height / 2, 'left')) {
-                    right = x;
-                    break;
+            // Sample at multiple X positions for top/bottom edges
+            for (let i = 0; i < numSamples; i++) {
+                const x = Math.floor(width * (i + 1) / (numSamples + 1));
+                
+                // Detect top edge at this X
+                for (let y = 0; y < height / 2; y += sampleRate) {
+                    if (isEdgeTransition(data, width, height, x, y, 'down')) {
+                        topEdges.push(y);
+                        break;
+                    }
+                }
+                
+                // Detect bottom edge at this X
+                for (let y = height - 1; y > height / 2; y -= sampleRate) {
+                    if (isEdgeTransition(data, width, height, x, y, 'up')) {
+                        bottomEdges.push(y);
+                        break;
+                    }
                 }
             }
             
-            // Detect top edge
-            let top = 0;
-            for (let y = 0; y < height / 2; y += sampleRate) {
-                if (isEdgeTransition(data, width, height, width / 2, y, 'down')) {
-                    top = y;
-                    break;
-                }
-            }
-            
-            // Detect bottom edge
-            let bottom = height;
-            for (let y = height - 1; y > height / 2; y -= sampleRate) {
-                if (isEdgeTransition(data, width, height, width / 2, y, 'up')) {
-                    bottom = y;
-                    break;
-                }
-            }
+            // Use median of samples for more accurate edge detection
+            const left = leftEdges.length > 0 ? median(leftEdges) : 0;
+            const right = rightEdges.length > 0 ? median(rightEdges) : width;
+            const top = topEdges.length > 0 ? median(topEdges) : 0;
+            const bottom = bottomEdges.length > 0 ? median(bottomEdges) : height;
             
             return { left, right, top, bottom };
+        }
+        
+        function median(arr) {
+            if (arr.length === 0) return 0;
+            const sorted = arr.slice().sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 === 0 
+                ? Math.floor((sorted[mid - 1] + sorted[mid]) / 2)
+                : sorted[mid];
         }
 
         function isEdgeTransition(data, width, height, x, y, direction) {
@@ -1311,6 +1338,36 @@
                 // Draw the card image
                 ctx.drawImage(img, 0, 0);
                 
+                // Get detected edges
+                const edges = centeringData.edges;
+                
+                // Draw semi-transparent dark overlay
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Clear the card area to show it clearly
+                if (edges) {
+                    ctx.clearRect(edges.left, edges.top, 
+                                 edges.right - edges.left, 
+                                 edges.bottom - edges.top);
+                    ctx.drawImage(img, edges.left, edges.top, 
+                                 edges.right - edges.left, 
+                                 edges.bottom - edges.top,
+                                 edges.left, edges.top,
+                                 edges.right - edges.left, 
+                                 edges.bottom - edges.top);
+                }
+                
+                // Draw detected card borders (green rectangles)
+                if (edges) {
+                    ctx.strokeStyle = '#48bb78';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([]);
+                    ctx.strokeRect(edges.left, edges.top, 
+                                  edges.right - edges.left, 
+                                  edges.bottom - edges.top);
+                }
+                
                 // Parse centering ratios
                 const lrMatch = (centeringData.frontLR || centeringData.measurement || '50/50').match(/(\d+)\/(\d+)/);
                 const tbMatch = (centeringData.frontTB || '50/50').match(/(\d+)\/(\d+)/);
@@ -1319,56 +1376,139 @@
                     const lrRatio = parseInt(lrMatch[1]) / (parseInt(lrMatch[1]) + parseInt(lrMatch[2]));
                     const tbRatio = parseInt(tbMatch[1]) / (parseInt(tbMatch[1]) + parseInt(tbMatch[2]));
                     
-                    // Draw semi-transparent overlay
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    // Calculate center lines based on detected edges
+                    const cardLeft = edges ? edges.left : 0;
+                    const cardRight = edges ? edges.right : canvas.width;
+                    const cardTop = edges ? edges.top : 0;
+                    const cardBottom = edges ? edges.bottom : canvas.height;
+                    
+                    const cardWidth = cardRight - cardLeft;
+                    const cardHeight = cardBottom - cardTop;
                     
                     // Draw center lines
                     ctx.strokeStyle = '#667eea';
-                    ctx.lineWidth = 3;
+                    ctx.lineWidth = 2;
                     ctx.setLineDash([10, 5]);
                     
                     // Vertical center line (L/R centering)
-                    const centerX = canvas.width * lrRatio;
+                    const centerX = cardLeft + (cardWidth * lrRatio);
                     ctx.beginPath();
-                    ctx.moveTo(centerX, 0);
-                    ctx.lineTo(centerX, canvas.height);
+                    ctx.moveTo(centerX, cardTop);
+                    ctx.lineTo(centerX, cardBottom);
                     ctx.stroke();
                     
                     // Horizontal center line (T/B centering)
-                    const centerY = canvas.height * tbRatio;
+                    const centerY = cardTop + (cardHeight * tbRatio);
                     ctx.beginPath();
-                    ctx.moveTo(0, centerY);
-                    ctx.lineTo(canvas.width, centerY);
+                    ctx.moveTo(cardLeft, centerY);
+                    ctx.lineTo(cardRight, centerY);
                     ctx.stroke();
                     
                     ctx.setLineDash([]);
                     
-                    // Draw measurement arrows and labels
+                    // Draw measurement grid (like in the video)
+                    ctx.strokeStyle = 'rgba(102, 126, 234, 0.3)';
+                    ctx.lineWidth = 1;
+                    
+                    // Vertical grid lines (quarters)
+                    for (let i = 1; i < 4; i++) {
+                        const x = cardLeft + (cardWidth * i / 4);
+                        ctx.beginPath();
+                        ctx.moveTo(x, cardTop);
+                        ctx.lineTo(x, cardBottom);
+                        ctx.stroke();
+                    }
+                    
+                    // Horizontal grid lines (quarters)
+                    for (let i = 1; i < 4; i++) {
+                        const y = cardTop + (cardHeight * i / 4);
+                        ctx.beginPath();
+                        ctx.moveTo(cardLeft, y);
+                        ctx.lineTo(cardRight, y);
+                        ctx.stroke();
+                    }
+                    
+                    // Draw border measurement indicators
                     ctx.fillStyle = '#ffffff';
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
-                    ctx.font = 'bold 16px Arial';
+                    ctx.font = 'bold 14px Arial';
                     ctx.textAlign = 'center';
                     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
                     ctx.shadowBlur = 4;
                     
-                    // Left/Right measurements
-                    const lrText = centeringData.frontLR || centeringData.measurement || '50/50';
-                    ctx.fillText(lrText, canvas.width / 2, 30);
+                    // Calculate border widths
+                    const leftBorder = edges ? edges.left : 0;
+                    const rightBorder = edges ? (canvas.width - edges.right) : 0;
+                    const topBorder = edges ? edges.top : 0;
+                    const bottomBorder = edges ? (canvas.height - edges.bottom) : 0;
                     
-                    // Top/Bottom measurements  
-                    const tbText = centeringData.frontTB || '50/50';
+                    // Top border measurement
+                    ctx.fillStyle = getRatioColor(centeringData.frontTB);
+                    ctx.fillRect(cardLeft + cardWidth/2 - 60, 10, 120, 30);
+                    ctx.fillStyle = '#000';
+                    ctx.fillText('T: ' + topBorder + 'px', cardLeft + cardWidth/2, 30);
+                    
+                    // Bottom border measurement
+                    ctx.fillStyle = getRatioColor(centeringData.frontTB);
+                    ctx.fillRect(cardLeft + cardWidth/2 - 60, canvas.height - 40, 120, 30);
+                    ctx.fillStyle = '#000';
+                    ctx.fillText('B: ' + bottomBorder + 'px', cardLeft + cardWidth/2, canvas.height - 20);
+                    
+                    // Left border measurement
                     ctx.save();
-                    ctx.translate(30, canvas.height / 2);
+                    ctx.translate(20, cardTop + cardHeight/2);
                     ctx.rotate(-Math.PI / 2);
-                    ctx.fillText(tbText, 0, 0);
+                    ctx.fillStyle = getRatioColor(centeringData.frontLR);
+                    ctx.fillRect(-60, -15, 120, 30);
+                    ctx.fillStyle = '#000';
+                    ctx.fillText('L: ' + leftBorder + 'px', 0, 5);
                     ctx.restore();
                     
-                    // Draw border rectangle
-                    ctx.strokeStyle = getRatioColor(centeringData.worstRatio || lrText);
-                    ctx.lineWidth = 4;
-                    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+                    // Right border measurement
+                    ctx.save();
+                    ctx.translate(canvas.width - 20, cardTop + cardHeight/2);
+                    ctx.rotate(-Math.PI / 2);
+                    ctx.fillStyle = getRatioColor(centeringData.frontLR);
+                    ctx.fillRect(-60, -15, 120, 30);
+                    ctx.fillStyle = '#000';
+                    ctx.fillText('R: ' + rightBorder + 'px', 0, 5);
+                    ctx.restore();
+                    
+                    // Draw centering ratio labels
+                    ctx.shadowBlur = 6;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 18px Arial';
+                    
+                    // L/R ratio at top
+                    const lrText = centeringData.frontLR || centeringData.measurement || '50/50';
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(cardLeft + 10, cardTop + 10, 100, 35);
+                    ctx.fillStyle = getRatioColor(lrText);
+                    ctx.fillText(lrText, cardLeft + 60, cardTop + 35);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.fillText('L/R', cardLeft + 60, cardTop + 25);
+                    
+                    // T/B ratio at bottom
+                    const tbText = centeringData.frontTB || '50/50';
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(cardRight - 110, cardBottom - 45, 100, 35);
+                    ctx.fillStyle = getRatioColor(tbText);
+                    ctx.font = 'bold 18px Arial';
+                    ctx.fillText(tbText, cardRight - 60, cardBottom - 15);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.fillText('T/B', cardRight - 60, cardBottom - 25);
+                    
+                    // Draw "Measured by Computer Vision" badge
+                    ctx.shadowBlur = 4;
+                    ctx.fillStyle = 'rgba(102, 126, 234, 0.9)';
+                    ctx.fillRect(cardLeft, cardBottom + 5, 200, 25);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.fillText('📐 Computer Vision Analysis', cardLeft + 10, cardBottom + 20);
                 }
             };
             
