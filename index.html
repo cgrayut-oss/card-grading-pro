@@ -902,6 +902,91 @@
             const breakdown = result.breakdown || {};
             const keyIssues = result.keyIssues || [];
             
+            // Build centering visualization
+            let centeringHTML = '';
+            if (breakdown.centering) {
+                const c = breakdown.centering;
+                centeringHTML = `
+                    <div class="detail-item">
+                        <div class="detail-title">Centering</div>
+                        <div class="detail-value">${c.score}/10</div>
+                        
+                        <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                            <div style="font-size: 0.85rem; margin-bottom: 0.5rem; color: #a0aec0;">Front:</div>
+                            <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem;">
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.75rem; color: #a0aec0;">Left/Right</div>
+                                    <div style="font-size: 1.1rem; font-weight: 600; color: ${getRatioColor(c.frontLR || c.measurement)}">${c.frontLR || c.measurement || 'N/A'}</div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.75rem; color: #a0aec0;">Top/Bottom</div>
+                                    <div style="font-size: 1.1rem; font-weight: 600; color: ${getRatioColor(c.frontTB)}">${c.frontTB || 'N/A'}</div>
+                                </div>
+                            </div>
+                            
+                            ${c.backLR ? `
+                                <div style="font-size: 0.85rem; margin: 0.75rem 0 0.5rem; color: #a0aec0; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1);">Back:</div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <div style="flex: 1;">
+                                        <div style="font-size: 0.75rem; color: #a0aec0;">Left/Right</div>
+                                        <div style="font-size: 1.1rem; font-weight: 600; color: ${getRatioColor(c.backLR)}">${c.backLR}</div>
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <div style="font-size: 0.75rem; color: #a0aec0;">Top/Bottom</div>
+                                        <div style="font-size: 1.1rem; font-weight: 600; color: ${getRatioColor(c.backTB)}">${c.backTB}</div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            ${c.worstRatio ? `
+                                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                                    <div style="font-size: 0.75rem; color: #a0aec0;">Worst Ratio (Grade Limiter)</div>
+                                    <div style="font-size: 1.2rem; font-weight: 700; color: ${getRatioColor(c.worstRatio)}">${c.worstRatio}</div>
+                                    <div style="font-size: 0.8rem; color: #ed8936; margin-top: 0.25rem;">${c.limitingFactor || ''}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        ${c.issue ? `<div class="detail-issue" style="margin-top: 0.5rem;">${c.issue}</div>` : ''}
+                    </div>
+                `;
+            }
+            
+            // Build corners detail with individual corner breakdown
+            let cornersHTML = '';
+            if (breakdown.corners) {
+                const cor = breakdown.corners;
+                cornersHTML = `
+                    <div class="detail-item">
+                        <div class="detail-title">Corners</div>
+                        <div class="detail-value">${cor.score}/10</div>
+                        
+                        ${cor.topLeft ? `
+                            <div style="margin-top: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem;">
+                                <div style="padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px;">
+                                    <div style="color: #a0aec0;">Top Left</div>
+                                    <div style="color: ${cor.topLeft.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.topLeft}</div>
+                                </div>
+                                <div style="padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px;">
+                                    <div style="color: #a0aec0;">Top Right</div>
+                                    <div style="color: ${cor.topRight.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.topRight}</div>
+                                </div>
+                                <div style="padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px;">
+                                    <div style="color: #a0aec0;">Bottom Left</div>
+                                    <div style="color: ${cor.bottomLeft.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.bottomLeft}</div>
+                                </div>
+                                <div style="padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px;">
+                                    <div style="color: #a0aec0;">Bottom Right</div>
+                                    <div style="color: ${cor.bottomRight.includes('sharp') ? '#48bb78' : '#ed8936'}">${cor.bottomRight}</div>
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        ${cor.issue ? `<div class="detail-issue" style="margin-top: 0.5rem;">${cor.issue}</div>` : ''}
+                    </div>
+                `;
+            }
+            
             resultsContent.innerHTML = `
                 <div class="grade-result">
                     <div class="grade-hero">
@@ -913,21 +998,8 @@
                     </div>
                     
                     <div class="grade-details">
-                        ${breakdown.centering ? `
-                            <div class="detail-item">
-                                <div class="detail-title">Centering</div>
-                                <div class="detail-value">${breakdown.centering.score}/10 - ${breakdown.centering.measurement || 'N/A'}</div>
-                                ${breakdown.centering.issue ? `<div class="detail-issue">${breakdown.centering.issue}</div>` : ''}
-                            </div>
-                        ` : ''}
-                        
-                        ${breakdown.corners ? `
-                            <div class="detail-item">
-                                <div class="detail-title">Corners</div>
-                                <div class="detail-value">${breakdown.corners.score}/10</div>
-                                ${breakdown.corners.issue ? `<div class="detail-issue">${breakdown.corners.issue}</div>` : ''}
-                            </div>
-                        ` : ''}
+                        ${centeringHTML}
+                        ${cornersHTML}
                         
                         ${breakdown.edges ? `
                             <div class="detail-item">
@@ -964,6 +1036,23 @@
                     </button>
                 </div>
             `;
+        }
+        
+        function getRatioColor(ratio) {
+            if (!ratio) return '#a0aec0';
+            
+            // Extract the larger number from ratio like "70/30" or "65/35"
+            const match = ratio.match(/(\d+)\/(\d+)/);
+            if (!match) return '#a0aec0';
+            
+            const larger = Math.max(parseInt(match[1]), parseInt(match[2]));
+            
+            // Color code based on PSA standards
+            if (larger <= 55) return '#48bb78'; // Green - PSA 10
+            if (larger <= 60) return '#68d391'; // Light green - PSA 9
+            if (larger <= 65) return '#f6e05e'; // Yellow - PSA 8
+            if (larger <= 70) return '#ed8936'; // Orange - PSA 7
+            return '#f56565'; // Red - PSA 6 or below
         }
 
         // Expose functions globally
