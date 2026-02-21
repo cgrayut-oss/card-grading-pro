@@ -1,5 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
+<!--
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  JERF SPORTS - AI Card Grading Application                                  │
+│  Version: 2.0 - Complete Edition with Crease Detection                      │
+│  Created: February 2026                                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  FEATURES INCLUDED:                                                          │
+│  ✅ Camera capture system (6 angles)                                        │
+│  ✅ Computer vision centering analysis (programmatic edge detection)        │
+│  ✅ Professional measurement grid overlay                                   │
+│  ✅ Crease detection system (Sobel + Shadow analysis)                       │
+│  ✅ Corner zoom views with issue highlighting                               │
+│  ✅ AI-powered grading (Claude Sonnet 4)                                    │
+│  ✅ PSA 1-10 grading scale with ranges                                      │
+│  ✅ Grade-killing flaw detection                                            │
+│  ✅ Detailed breakdown by category                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  GRADING WORKFLOW:                                                           │
+│  1. User captures 6 photos (front, back, 4 corners)                         │
+│  2. Browser detects creases using edge/shadow detection                     │
+│  3. Browser measures centering using border pixel analysis                  │
+│  4. Data sent to Cloudflare Worker                                          │
+│  5. Worker calls Claude API for corner/edge/surface analysis                │
+│  6. Results merged and displayed with visual overlays                       │
+│  7. Final grade calculated (minimum of all categories)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  COMPUTER VISION ALGORITHMS:                                                 │
+│  - Edge Detection: Multi-sample median filtering                            │
+│  - Centering: Programmatic border width measurement                         │
+│  - Crease Detection: Sobel operator + shadow line analysis                  │
+│  - Corner Analysis: AI vision with zoom extraction                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  DEPLOYMENT:                                                                 │
+│  - Upload to: GitHub Pages (card-grading-pro repository)                    │
+│  - Worker URL: https://card-grading-ai.cgrayut.workers.dev                  │
+│  - No dependencies - runs 100% client-side except AI calls                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+-->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
